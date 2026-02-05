@@ -1,0 +1,83 @@
+name: Deploy Server to Sprite
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: 'Server slug (e.g., google-calendar)'
+        required: true
+        type: string
+      version:
+        description: 'Server version (e.g., v2.0.0)'
+        required: true
+        type: string
+      oauth_client_id:
+        description: 'OAuth Client ID (optional)'
+        required: false
+        type: string
+      oauth_client_secret:
+        description: 'OAuth Client Secret (optional)'
+        required: false
+        type: string
+      oauth_callback_url:
+        description: 'OAuth Callback URL (optional)'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      sprite-url: ${{ steps.deploy.outputs.sprite-url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Setup jq
+        uses: dcarbone/install-jq-action@v2
+
+      - name: Link xtrnlib
+        run: |
+          cd xtrnlib
+          bun link
+          cd ..
+
+      - name: Install dependencies
+        run: |
+          cd servers/${{ inputs.slug }}/${{ inputs.version }}
+          bun link xtrn-server
+          bun install
+
+      - name: Inject OAuth credentials
+        if: inputs.oauth_client_id != ''
+        run: |
+          cd servers/${{ inputs.slug }}/${{ inputs.version }}
+          jq --arg cid "${{ inputs.oauth_client_id }}" \
+             --arg cs "${{ inputs.oauth_client_secret }}" \
+             --arg cb "${{ inputs.oauth_callback_url }}" \
+             '.client_id=$cid | .client_secret=$cs | .callback_url=$cb' \
+             oauth.json > tmp.json && mv tmp.json oauth.json
+
+      - name: Compile server
+        run: |
+          cd servers/${{ inputs.slug }}/${{ inputs.version }}
+          bun build --compile --target=bun-linux-x64 index.ts --outfile server
+
+      - name: Deploy to Sprite
+        id: deploy
+        env:
+          SPRITE_TOKEN: ${{ secrets.SPRITE_TOKEN }}
+        run: |
+          # TODO: Implement Sprite deployment
+          # For now, output a placeholder URL
+          echo "sprite-url=https://xtrn-${{ inputs.slug }}-${{ inputs.version }}.sprites.app" >> $GITHUB_OUTPUT
+          echo "Deployed to Sprite (placeholder)"
+
+      - name: Health check
+        run: |
+          SPRITE_URL="${{ steps.deploy.outputs.sprite-url }}"
+          echo "Checking $SPRITE_URL/details"
+          # TODO: Implement actual health check once deployment is real
+          echo "Health check passed (placeholder)"
