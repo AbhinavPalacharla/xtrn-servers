@@ -1,0 +1,67 @@
+name: Validate Server Submission
+
+on:
+  pull_request:
+    paths:
+      - 'servers/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Detect changed servers
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            servers:
+              - 'servers/**'
+
+      - name: Validate server structure
+        if: steps.filter.outputs.servers == 'true'
+        run: |
+          for server_dir in servers/*/; do
+            if [ -d "$server_dir" ]; then
+              for version_dir in "$server_dir"/*/; do
+                if [ -d "$version_dir" ]; then
+                  echo "Validating $version_dir"
+                  
+                  # Check index.ts exists
+                  if [ ! -f "$version_dir/index.ts" ]; then
+                    echo "ERROR: index.ts not found in $version_dir"
+                    exit 1
+                  fi
+                  
+                  # Check package.json exists and has required fields
+                  if [ ! -f "$version_dir/package.json" ]; then
+                    echo "ERROR: package.json not found in $version_dir"
+                    exit 1
+                  fi
+                  
+                  # Link xtrnlib
+                  cd xtrnlib && bun link && cd ..
+                  cd "$version_dir" && bun link xtrn-server && bun install
+                  
+                  # Check oauth.json is cleansed if it exists
+                  if [ -f "oauth.json" ]; then
+                    if ! jq -e '.client_id == "" and .client_secret == "" and .callback_url == ""' oauth.json > /dev/null; then
+                      echo "ERROR: oauth.json must have empty client_id, client_secret, and callback_url"
+                      exit 1
+                    fi
+                  fi
+                  
+                  # Try to compile
+                  bun build --compile --target=bun-linux-x64 index.ts --outfile /tmp/test-server || exit 1
+                  
+                  cd ../..
+                fi
+              done
+            fi
+          done
+          
+          echo "All validations passed!"
