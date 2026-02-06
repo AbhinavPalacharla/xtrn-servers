@@ -60,9 +60,15 @@ jobs:
           SPRITE_TOKEN: ${{ secrets.SPRITE_TOKEN }}
         working-directory: xtrn-prod/backend
         run: |
-          # Build and run deploycli
+          # Build deploycli
           go build -o deploycli ./cmd/deploycli
           
+          # Destroy existing Sprite if it exists (ignore errors)
+          echo "Destroying existing Sprite (if any)..."
+          ./deploycli --server=${{ inputs.slug }} --version=${{ inputs.version }} --destroy 2>&1 || true
+          
+          # Deploy fresh
+          echo "Deploying..."
           OUTPUT=$(./deploycli --server=${{ inputs.slug }} --version=${{ inputs.version }} 2>&1) || true
           echo "$OUTPUT"
           
