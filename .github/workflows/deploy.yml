@@ -40,7 +40,7 @@ jobs:
         with:
           repository: AbhinavPalacharla/xtrn
           path: xtrn-prod
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.XTRN_REPO_TOKEN }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
