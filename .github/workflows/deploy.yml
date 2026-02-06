@@ -93,6 +93,14 @@ jobs:
           cd xtrn-prod/backend
           go build -o deploycli ./cmd/deploycli/
 
+      - name: Cleanup existing Sprite (if any)
+        env:
+          SPRITE_TOKEN: ${{ secrets.SPRITE_TOKEN }}
+        run: |
+          cd xtrn-prod/backend
+          echo "Attempting to destroy existing Sprite (may not exist)..."
+          ./deploycli --server=${{ inputs.slug }} --version=${{ inputs.version }} --destroy 2>&1 || true
+
       - name: Deploy to Sprite
         id: deploy
         env:
