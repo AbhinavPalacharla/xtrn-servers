@@ -117,13 +117,15 @@ jobs:
           echo "Deployed to: $URL"
 
       - name: Health check
+        env:
+          SPRITE_TOKEN: ${{ secrets.SPRITE_TOKEN }}
         run: |
           SPRITE_URL="${{ steps.deploy.outputs.sprite-url }}"
           echo "Checking $SPRITE_URL/details"
           for i in {1..30}; do
-            if curl -sf "$SPRITE_URL/details" > /dev/null; then
+            if curl -sf -H "Authorization: Bearer $SPRITE_TOKEN" "$SPRITE_URL/details" > /dev/null; then
               echo "Health check passed (attempt $i/30)"
-              curl -s "$SPRITE_URL/details" | jq .
+              curl -s -H "Authorization: Bearer $SPRITE_TOKEN" "$SPRITE_URL/details" | jq .
               exit 0
             fi
             echo "Attempt $i/30 failed, retrying in 2s..."
