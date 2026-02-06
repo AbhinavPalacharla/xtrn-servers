@@ -83,6 +83,10 @@ jobs:
           mkdir -p xtrn-prod/backend/xtrnservers/${{ inputs.slug }}
           cp -r xtrn-servers/servers/${{ inputs.slug }}/${{ inputs.version }} \
                 xtrn-prod/backend/xtrnservers/${{ inputs.slug }}/${{ inputs.version }}
+          # Install dependencies in the copied directory (deploycli compiles from here)
+          cd xtrn-prod/backend/xtrnservers/${{ inputs.slug }}/${{ inputs.version }}
+          bun link xtrn-server
+          bun install
 
       - name: Build deploycli
         run: |
