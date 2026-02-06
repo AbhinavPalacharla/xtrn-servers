@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: AbhinavPalacharla/xtrn-prod
-          token: ${{ secrets.XTRN_PROD_PAT }}
+          token: ${{ secrets.XTRN_REPO_TOKEN }}
           path: xtrn-prod
           ref: race-cond-redesign
 
