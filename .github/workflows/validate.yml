@@ -25,6 +25,14 @@ jobs:
             servers:
               - 'servers/**'
 
+      - name: Build and link xtrnlib
+        if: steps.filter.outputs.servers == 'true'
+        run: |
+          cd xtrnlib
+          bun install
+          bun run build
+          bun link
+
       - name: Validate server structure
         if: steps.filter.outputs.servers == 'true'
         run: |
@@ -46,8 +54,6 @@ jobs:
                     exit 1
                   fi
                   
-                  # Link xtrnlib
-                  cd xtrnlib && bun link && cd ..
                   cd "$version_dir" && bun link xtrn-server && bun install
                   
                   # Check oauth.json is cleansed if it exists
