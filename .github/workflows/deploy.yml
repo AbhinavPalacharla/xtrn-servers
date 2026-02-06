@@ -107,8 +107,8 @@ jobs:
           SPRITE_TOKEN: ${{ secrets.SPRITE_TOKEN }}
         run: |
           cd xtrn-prod/backend
-          OUTPUT=$(./deploycli --server=${{ inputs.slug }} --version=${{ inputs.version }} 2>&1 | tee /dev/stderr | tail -n 20)
-          URL=$(echo "$OUTPUT" | grep -o '"url": "[^"]*"' | sed 's/"url": "//;s/"$//' | head -1)
+          OUTPUT=$(./deploycli --server=${{ inputs.slug }} --version=${{ inputs.version }} 2>&1 | tee /dev/stderr)
+          URL=$(echo "$OUTPUT" | grep '^DEPLOY_URL=' | sed 's/^DEPLOY_URL=//')
           if [ -z "$URL" ]; then
             echo "Failed to extract URL from deploycli output"
             exit 1
