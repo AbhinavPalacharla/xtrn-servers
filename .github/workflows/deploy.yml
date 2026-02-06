@@ -30,54 +30,91 @@ jobs:
     outputs:
       sprite-url: ${{ steps.deploy.outputs.sprite-url }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout xtrn-servers
+        uses: actions/checkout@v4
+        with:
+          path: xtrn-servers
+
+      - name: Checkout xtrn-prod (for deploycli)
+        uses: actions/checkout@v4
+        with:
+          repository: AbhinavPalacharla/xtrn
+          path: xtrn-prod
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
       - name: Setup jq
         uses: dcarbone/install-jq-action@v2
 
-      - name: Link xtrnlib
+      - name: Build and link xtrnlib
         run: |
-          cd xtrnlib
+          cd xtrn-servers/xtrnlib
+          bun install
+          bun run build
           bun link
-          cd ..
 
-      - name: Install dependencies
+      - name: Install server dependencies
         run: |
-          cd servers/${{ inputs.slug }}/${{ inputs.version }}
+          cd xtrn-servers/servers/${{ inputs.slug }}/${{ inputs.version }}
           bun link xtrn-server
           bun install
 
       - name: Inject OAuth credentials
         if: inputs.oauth_client_id != ''
         run: |
-          cd servers/${{ inputs.slug }}/${{ inputs.version }}
+          cd xtrn-servers/servers/${{ inputs.slug }}/${{ inputs.version }}
           jq --arg cid "${{ inputs.oauth_client_id }}" \
              --arg cs "${{ inputs.oauth_client_secret }}" \
              --arg cb "${{ inputs.oauth_callback_url }}" \
              '.client_id=$cid | .client_secret=$cs | .callback_url=$cb' \
              oauth.json > tmp.json && mv tmp.json oauth.json
 
-      - name: Compile server
+      - name: Setup deploycli directory structure
         run: |
-          cd servers/${{ inputs.slug }}/${{ inputs.version }}
-          bun build --compile --target=bun-linux-x64 index.ts --outfile server
+          # deploycli expects servers in xtrnservers/slug/version
+          mkdir -p xtrn-prod/backend/xtrnservers/${{ inputs.slug }}
+          cp -r xtrn-servers/servers/${{ inputs.slug }}/${{ inputs.version }} \
+                xtrn-prod/backend/xtrnservers/${{ inputs.slug }}/${{ inputs.version }}
+
+      - name: Build deploycli
+        run: |
+          cd xtrn-prod/backend
+          go build -o deploycli ./cmd/deploycli/
 
       - name: Deploy to Sprite
         id: deploy
         env:
           SPRITE_TOKEN: ${{ secrets.SPRITE_TOKEN }}
         run: |
-          # TODO: Implement Sprite deployment
-          # For now, output a placeholder URL
-          echo "sprite-url=https://xtrn-${{ inputs.slug }}-${{ inputs.version }}.sprites.app" >> $GITHUB_OUTPUT
-          echo "Deployed to Sprite (placeholder)"
+          cd xtrn-prod/backend
+          OUTPUT=$(./deploycli --server=${{ inputs.slug }} --version=${{ inputs.version }} 2>&1 | tee /dev/stderr | tail -n 20)
+          URL=$(echo "$OUTPUT" | grep -o '"url": "[^"]*"' | sed 's/"url": "//;s/"$//' | head -1)
+          if [ -z "$URL" ]; then
+            echo "Failed to extract URL from deploycli output"
+            exit 1
+          fi
+          echo "sprite-url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployed to: $URL"
 
       - name: Health check
         run: |
           SPRITE_URL="${{ steps.deploy.outputs.sprite-url }}"
           echo "Checking $SPRITE_URL/details"
-          # TODO: Implement actual health check once deployment is real
-          echo "Health check passed (placeholder)"
+          for i in {1..30}; do
+            if curl -sf "$SPRITE_URL/details" > /dev/null; then
+              echo "Health check passed (attempt $i/30)"
+              curl -s "$SPRITE_URL/details" | jq .
+              exit 0
+            fi
+            echo "Attempt $i/30 failed, retrying in 2s..."
+            sleep 2
+          done
+          echo "Health check failed after 30 attempts"
+          exit 1
