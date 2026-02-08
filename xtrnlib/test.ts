@@ -1,14 +1,11 @@
 import * as z from "zod";
-import { XTRNServer, defineConfig, type OAuthConfig, ToolTag } from "./index";
+import { defineConfig, type OAuthConfig, ToolTag, XTRNServer } from "./index";
 
 const oauthConfig: OAuthConfig = {
 	provider: "google",
-	client_id: "test-client-id",
-	client_secret: "test-client-secret",
 	authorization_url: "https://accounts.google.com/o/oauth2/v2/auth",
 	token_url: "https://oauth2.googleapis.com/token",
 	scopes: ["email", "profile"],
-	callback_url: "http://localhost:8080/callback",
 };
 
 const toolSchema = z.object({
@@ -235,34 +232,14 @@ server7_WithTags.registerTool({
 });
 
 // @ts-expect-error - invalid tag should cause type error
-const _invalidTagTest: typeof ToolTag[keyof typeof ToolTag] = "InvalidTag";
+const _invalidTagTest: (typeof ToolTag)[keyof typeof ToolTag] = "InvalidTag";
 
-const servers = {
-	"1": server1_NoOAuth_NoConfig,
-	"2": server2_ConfigOnly_1Field,
-	"3": server3_ConfigOnly_3Fields,
-	"4": server4_OAuthOnly,
-	"5": server5_OAuthAndConfig_1Field,
-	"6": server6_OAuthAndConfig_3Fields,
-	"7": server7_WithTags,
+export {
+	server1_NoOAuth_NoConfig,
+	server2_ConfigOnly_1Field,
+	server3_ConfigOnly_3Fields,
+	server4_OAuthOnly,
+	server5_OAuthAndConfig_1Field,
+	server6_OAuthAndConfig_3Fields,
+	server7_WithTags,
 };
-
-const args = process.argv.slice(2);
-const serverArg = args.find((a) => a.startsWith("--server="));
-const serverKey = (serverArg?.split("=")[1] || "6") as keyof typeof servers;
-
-const server = servers[serverKey];
-if (!server) {
-	console.error(`Unknown server: ${serverKey}`);
-	console.error("Available: 1, 2, 3, 4, 5, 6, 7");
-	console.error("  1: No OAuth, No Config");
-	console.error("  2: Config only (1 field)");
-	console.error("  3: Config only (3 fields)");
-	console.error("  4: OAuth only");
-	console.error("  5: OAuth + Config (1 field)");
-	console.error("  6: OAuth + Config (3 fields)");
-	console.error("  7: Tool Tags test");
-	process.exit(1);
-}
-
-server.run();

@@ -1,18 +1,24 @@
 import type { Context as HonoContext } from "hono";
 import { Hono } from "hono";
+import { env } from "hono/adapter";
 import * as z from "zod";
 // Import Zod v4 types and runtime
 import type * as z4 from "zod/v4/core";
 
-// OAuth config type
+// OAuth config type — inline developer-specified fields only.
+// client_id, client_secret, callback_url come from environment variables.
 export type OAuthConfig = {
 	provider: string;
-	client_id: string;
-	client_secret: string;
 	authorization_url: string;
 	token_url: string;
 	scopes: string[];
-	callback_url: string;
+};
+
+// Environment variable bindings for OAuth secrets
+type OAuthEnvBindings = {
+	OAUTH_CLIENT_ID: string;
+	OAUTH_CLIENT_SECRET: string;
+	OAUTH_CALLBACK_URL: string;
 };
 
 export const ToolTag = {
@@ -126,10 +132,20 @@ type Tool<T extends ConfigType> = {
 	handler: (ctx: XTRNContext<T>) => Promise<Response> | Response;
 };
 
+type FullOAuthDetails = {
+	provider: string;
+	client_id: string;
+	client_secret: string;
+	authorization_url: string;
+	token_url: string;
+	scopes: string[];
+	callback_url: string;
+};
+
 type ServerDetails = {
 	name: string;
 	version: string;
-	oauth: OAuthConfig | null;
+	oauth: FullOAuthDetails | null;
 	config: Array<{ key: string; type: "string" | "number" | "boolean" }>;
 	tools: Array<{
 		name: string;
@@ -372,25 +388,31 @@ export class XTRNServer<T extends ConfigType> {
 				xtrnCtx.req = result.data as InferZodOutput<S>;
 				xtrnCtx.config = userConfig as UserConf<T>;
 
-				if (this.config.oauthConfig && refreshToken) {
-					(
-						xtrnCtx as XTRNContextWithSchema<T, S> & {
-							token: { refresh_token: string };
-							oauth: OAuthContextConfig;
-						}
-					).token = { refresh_token: refreshToken };
+			if (this.config.oauthConfig && refreshToken) {
+				const {
+					OAUTH_CLIENT_ID,
+					OAUTH_CLIENT_SECRET,
+					OAUTH_CALLBACK_URL,
+				} = env<OAuthEnvBindings>(honoCtx);
 
-					(
-						xtrnCtx as XTRNContextWithSchema<T, S> & {
-							oauth: OAuthContextConfig;
-						}
-					).oauth = {
-						client_id: this.config.oauthConfig.client_id,
-						client_secret: this.config.oauthConfig.client_secret,
-						token_url: this.config.oauthConfig.token_url,
-						callback_url: this.config.oauthConfig.callback_url,
-					};
-				}
+				(
+					xtrnCtx as XTRNContextWithSchema<T, S> & {
+						token: { refresh_token: string };
+						oauth: OAuthContextConfig;
+					}
+				).token = { refresh_token: refreshToken };
+
+				(
+					xtrnCtx as XTRNContextWithSchema<T, S> & {
+						oauth: OAuthContextConfig;
+					}
+				).oauth = {
+					client_id: OAUTH_CLIENT_ID,
+					client_secret: OAUTH_CLIENT_SECRET,
+					token_url: this.config.oauthConfig.token_url,
+					callback_url: OAUTH_CALLBACK_URL,
+				};
+			}
 
 				// Execute handler
 				return await handler(xtrnCtx);
@@ -404,11 +426,26 @@ export class XTRNServer<T extends ConfigType> {
 		});
 	}
 
-	private async buildDetails(): Promise<ServerDetails> {
+	private async buildDetails(
+		honoCtx?: HonoContext,
+	): Promise<ServerDetails> {
+		let oauth: FullOAuthDetails | null = null;
+		if (this.config.oauthConfig) {
+			const oauthEnv = honoCtx
+				? env<Partial<OAuthEnvBindings>>(honoCtx)
+				: ({} as Partial<OAuthEnvBindings>);
+			oauth = {
+				...this.config.oauthConfig,
+				client_id: oauthEnv.OAUTH_CLIENT_ID ?? "",
+				client_secret: oauthEnv.OAUTH_CLIENT_SECRET ?? "",
+				callback_url: oauthEnv.OAUTH_CALLBACK_URL ?? "",
+			};
+		}
+
 		return {
 			name: this.name,
 			version: this.version,
-			oauth: this.config.oauthConfig || null,
+			oauth,
 			config: this.config.userConfig || [],
 			tools: await Promise.all(
 				this.tools.map(async (tool) => ({
@@ -421,10 +458,9 @@ export class XTRNServer<T extends ConfigType> {
 		};
 	}
 
-	// Setup /details route
 	private setupDetailsRoute(): void {
 		this.app.get("/details", async (honoCtx) => {
-			return honoCtx.json(await this.buildDetails());
+			return honoCtx.json(await this.buildDetails(honoCtx));
 		});
 	}
 
@@ -432,8 +468,8 @@ export class XTRNServer<T extends ConfigType> {
 		return this.app;
 	}
 
-	fetch(request: Request): Promise<Response> {
-		return Promise.resolve(this.app.fetch(request));
+	fetch(request: Request, env?: Record<string, unknown>): Promise<Response> {
+		return Promise.resolve(this.app.fetch(request, env));
 	}
 
 	// Get the number of active requests
@@ -446,106 +482,15 @@ export class XTRNServer<T extends ConfigType> {
 		return this.refuseRequests;
 	}
 
-	private parseCliArgs(): {
-		isDevelopment: boolean;
-		isDetails: boolean;
-		port?: number;
-	} {
-		const args = process.argv.slice(2);
-		const isDevelopment = args.includes("--development") || args.includes("-d");
-		const isDetails = args.includes("--details");
-		const portArg = args.find((a) => a.startsWith("--port="));
-		const portStr = portArg?.split("=")[1];
-		const port = portStr ? parseInt(portStr, 10) : undefined;
-		return { isDevelopment, isDetails, port };
-	}
-
-	private printDevelopmentInfo(port: number): void {
-		const userConfig = this.config.userConfig ?? [];
-		const hasConfig = userConfig.length > 0;
-		const hasOAuth = !!this.config.oauthConfig;
-
-		console.log(`\n[DEVELOPMENT MODE] ${this.name} v${this.version}`);
-		console.log(`Server: http://localhost:${port}`);
-		console.log(`Config required: ${hasConfig ? "yes" : "no"}`);
-		console.log(`OAuth required: ${hasOAuth ? "yes" : "no"}`);
-
-		const configExample = hasConfig
-			? JSON.stringify(
-					Object.fromEntries(
-						userConfig.map((f) => [
-							f.key,
-							f.type === "string" ? "value" : f.type === "number" ? 123 : true,
-						]),
-					),
-				)
-			: "{}";
-
-		console.log("\nExample curl:");
-		let curlCmd = `curl -X POST http://localhost:${port}/tools/<tool-name> \\\n  -H "Content-Type: application/json"`;
-
-		if (hasConfig) {
-			curlCmd += ` \\\n  -H "X-XTRN-Config: $(echo -n '${configExample}' | base64)"`;
-		}
-		if (hasOAuth) {
-			curlCmd += ` \\\n  -H "X-XTRN-Token: $(echo -n 'your-refresh-token' | base64)"`;
-		}
-		curlCmd += ` \\\n  -d '{"param": "value"}'`;
-
-		console.log(curlCmd);
-
-		console.log("\nRegistered tools:");
-		for (const tool of this.tools) {
-			console.log(`  - POST /tools/${tool.name}: ${tool.description}`);
-		}
-		console.log("");
-	}
-
-	private async dumpDetails(): Promise<void> {
-		const details = await this.buildDetails();
-		console.log(JSON.stringify(details));
-		process.exit(0);
-	}
-
+	/** @deprecated Use `export default server` instead. */
 	run(): void {
-		const { isDevelopment, isDetails, port: cliPort } = this.parseCliArgs();
-
-		if (isDetails) {
-			this.dumpDetails();
-			return;
-		}
-
-		const hostname = isDevelopment ? "localhost" : "0.0.0.0";
-		let port: number;
-
-		if (isDevelopment) {
-			port = cliPort ?? 1234;
-		} else if (cliPort) {
-			port = cliPort;
-		} else {
-			const socket = Bun.listen({
-				hostname: isDevelopment ? "localhost" : "0.0.0.0",
-				port: 0,
-				socket: {
-					data() {},
-					open() {},
-					close() {},
-					drain() {},
-					error() {},
-				},
-			});
-			port = socket.port;
-			socket.stop();
-		}
-
-		if (isDevelopment) {
-			this.printDevelopmentInfo(port);
-		} else {
-			console.log(`http://0.0.0.0:${port}`);
-		}
-
+		console.warn(
+			"[xtrn] server.run() is deprecated. Use `export default server` for CF Workers compatibility.",
+		);
+		const port = 1234;
+		console.log(`http://localhost:${port}`);
 		Bun.serve({
-			hostname,
+			hostname: "localhost",
 			port,
 			fetch: this.app.fetch.bind(this.app),
 		});
