@@ -6,6 +6,7 @@
 		"dev": "bun run index.ts"
 	},
 	"dependencies": {
-		"xtrn-server": "link:xtrn-server"
+		"xtrn-server": "link:xtrn-server",
+		"zod": "^4.1.12"
 	}
 }
