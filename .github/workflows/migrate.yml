@@ -3,8 +3,20 @@ name: Migrate Server to Database
 on:
   workflow_dispatch:
     inputs:
-      sprite_url:
-        description: 'Sprite URL from deploy workflow'
+      worker_url:
+        description: 'Cloudflare Worker URL'
+        required: true
+        type: string
+      oauth_client_id:
+        description: 'OAuth Client ID'
+        required: true
+        type: string
+      oauth_client_secret:
+        description: 'OAuth Client Secret'
+        required: true
+        type: string
+      oauth_callback_url:
+        description: 'OAuth Callback URL'
         required: true
         type: string
       first_deploy:
@@ -39,11 +51,15 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           cd xtrn-prod/backend
-          ./migratecli --url "${{ inputs.sprite_url }}" ${{ inputs.first_deploy && '--first-deploy' || '' }}
+          ./migratecli --url "${{ inputs.worker_url }}" \
+            --oauth-client-id "${{ inputs.oauth_client_id }}" \
+            --oauth-client-secret "${{ inputs.oauth_client_secret }}" \
+            --oauth-callback-url "${{ inputs.oauth_callback_url }}" \
+            ${{ inputs.first_deploy && '--first-deploy' || '' }}
 
       - name: Verify migration
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           echo "Migration completed successfully"
-          echo "Sprite URL: ${{ inputs.sprite_url }}"
+          echo "Worker URL: ${{ inputs.worker_url }}"
