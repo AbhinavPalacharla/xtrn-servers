@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - 'servers/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'servers/**'
 
 jobs:
   validate:
