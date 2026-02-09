@@ -52,9 +52,8 @@ jobs:
                     exit 1
                   fi
                   
-                  # Build and link xtrnlib
                   cd xtrnlib && bun install && bun run build && bun link && cd ..
-                  cd "$version_dir" && bun install && bun link xtrn-server
+                  cd "$version_dir" && bun link xtrn-server
                   
                   # Bundle with esbuild for Cloudflare Workers (virtual entry re-exports XTRNState DO)
                   echo "Building bundle with esbuild..."
