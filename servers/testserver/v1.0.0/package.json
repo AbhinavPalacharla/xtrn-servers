@@ -1,0 +1,13 @@
+{
+	"name": "testserver",
+	"module": "index.ts",
+	"type": "module",
+	"private": true,
+	"dependencies": {
+		"xtrn-server": "link:../../../xtrnlib",
+		"zod": "^4.1.12"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	}
+}
