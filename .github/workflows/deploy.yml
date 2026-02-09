@@ -98,17 +98,15 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           cd servers/${{ steps.detect.outputs.slug }}/${{ steps.detect.outputs.version }}
-          bunx wrangler deploy --config wrangler.toml
+          DEPLOY_OUTPUT=$(bunx wrangler deploy --config wrangler.toml 2>&1)
+          echo "$DEPLOY_OUTPUT"
+          WORKER_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://[a-zA-Z0-9._-]*\.workers\.dev')
+          echo "worker-url=$WORKER_URL" >> $GITHUB_OUTPUT
 
       - name: Health check
         id: health
         run: |
-          cd servers/${{ steps.detect.outputs.slug }}/${{ steps.detect.outputs.version }}
-          
-          # Extract worker name from wrangler.toml
-          WORKER_NAME=$(grep '^name = ' wrangler.toml | head -1 | cut -d'"' -f2)
-          WORKER_URL="https://${WORKER_NAME}.workers.dev"
-          
+          WORKER_URL="${{ steps.deploy.outputs.worker-url }}"
           echo "Checking $WORKER_URL/details"
           
           # Wait a few seconds for deployment to propagate
@@ -136,7 +134,7 @@ jobs:
       - name: Output Worker URL
         id: output-url
         run: |
-          WORKER_URL="${{ steps.health.outputs.worker-url }}"
+          WORKER_URL="${{ steps.deploy.outputs.worker-url }}"
           echo "worker-url=$WORKER_URL" >> $GITHUB_OUTPUT
-          echo "✅ Deployed to: $WORKER_URL"
-          echo "📋 Server: ${{ steps.detect.outputs.slug }} ${{ steps.detect.outputs.version }}"
+          echo "Deployed to: $WORKER_URL"
+          echo "Server: ${{ steps.detect.outputs.slug }} ${{ steps.detect.outputs.version }}"
