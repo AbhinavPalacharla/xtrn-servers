@@ -148,83 +148,61 @@ jobs:
           echo "OAuth: $OAUTH_PROVIDER"
           echo "First deploy: $FIRST_DEPLOY"
 
-      - name: Post PR comment
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const slug = '${{ steps.detect.outputs.slug }}';
-            const version = '${{ steps.detect.outputs.version }}';
-            const workerUrl = '${{ steps.deploy.outputs.worker-url }}';
-            const name = '${{ steps.deploy-info.outputs.name }}';
-            const toolsCount = '${{ steps.deploy-info.outputs.tools-count }}';
-            const hasOauth = '${{ steps.deploy-info.outputs.has-oauth }}' === 'true';
-            const oauthProvider = '${{ steps.deploy-info.outputs.oauth-provider }}';
-            const firstDeploy = '${{ steps.deploy-info.outputs.first-deploy }}' === 'true';
-            const oldVersion = '${{ steps.deploy-info.outputs.old-version }}' || '';
-            
-            const oauthLine = hasOauth 
-              ? '**OAuth**: ' + oauthProvider + ' (credentials needed)'
-              : '**OAuth**: None';
-            
-            const deployType = firstDeploy 
-              ? '**Type**: First deploy'
-              : '**Type**: Migration from ' + oldVersion;
-            
-            const oauthInstructions = hasOauth
-              ? '\n\nFor OAuth servers:\n```\n/approve oauth_client_id=YOUR_ID oauth_client_secret=YOUR_SECRET oauth_callback_url=YOUR_URL\n```'
-              : '';
-            
-            const jsonData = JSON.stringify({
-              slug: slug,
-              version: version,
-              worker_url: workerUrl,
-              has_oauth: hasOauth,
-              first_deploy: firstDeploy
-            });
-            
-            const commentLines = [
-              '🚀 **Deployed** `' + name + '` ' + version + ' to Cloudflare Workers',
-              '',
-              '**URL**: ' + workerUrl,
-              '**Tools**: ' + toolsCount,
-              oauthLine,
-              deployType,
-              '',
-              'To approve, comment:',
-              '```',
-              '/approve',
-              '```' + oauthInstructions,
-              '',
-              'To reject and tear down:',
-              '```',
-              '/reject',
-              '```',
-              '',
-              '<!-- XTRN_DEPLOY:' + jsonData + ' -->'
-            ];
-            
-            const comment = commentLines.join('\n');
-            
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'all',
-              sort: 'updated',
-              direction: 'desc'
-            });
-            
-            const pr = prs.find(pr => pr.merge_commit_sha === '${{ github.event.workflow_run.head_sha }}');
-            
-            if (pr) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: pr.number,
-                body: comment
-              });
-              console.log('Posted comment to PR #' + pr.number);
-            } else {
-              console.log('No PR found for this commit');
-              console.log(comment);
+      - name: Create GitHub Deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SLUG="${{ steps.detect.outputs.slug }}"
+          VERSION="${{ steps.detect.outputs.version }}"
+          WORKER_URL="${{ steps.deploy.outputs.worker-url }}"
+          NAME="${{ steps.deploy-info.outputs.name }}"
+          TOOLS_COUNT="${{ steps.deploy-info.outputs.tools-count }}"
+          HAS_OAUTH="${{ steps.deploy-info.outputs.has-oauth }}"
+          OAUTH_PROVIDER="${{ steps.deploy-info.outputs.oauth-provider }}"
+          FIRST_DEPLOY="${{ steps.deploy-info.outputs.first-deploy }}"
+          
+          # Create deployment payload with all metadata
+          PAYLOAD=$(cat <<EOF
+          {
+            "ref": "${{ github.event.workflow_run.head_sha }}",
+            "environment": "cloudflare-workers",
+            "description": "Deploy $NAME $VERSION to Cloudflare Workers",
+            "auto_merge": false,
+            "required_contexts": [],
+            "payload": {
+              "slug": "$SLUG",
+              "version": "$VERSION",
+              "worker_url": "$WORKER_URL",
+              "has_oauth": $HAS_OAUTH,
+              "first_deploy": $FIRST_DEPLOY,
+              "name": "$NAME",
+              "tools_count": $TOOLS_COUNT,
+              "oauth_provider": "$OAUTH_PROVIDER"
             }
+          }
+          EOF
+          )
+          
+          # Create deployment
+          DEPLOY_RESPONSE=$(gh api repos/${{ github.repository }}/deployments -H "Accept: application/vnd.github.v3+json" --input - <<< "$PAYLOAD")
+          DEPLOY_ID=$(echo "$DEPLOY_RESPONSE" | jq -r '.id')
+          
+          echo "deployment-id=$DEPLOY_ID" >> $GITHUB_OUTPUT
+          echo "Created deployment: $DEPLOY_ID"
+
+      - name: Create deployment status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEPLOY_ID="${{ steps.deployment.outputs.deployment-id }}"
+          WORKER_URL="${{ steps.deploy.outputs.worker-url }}"
+          
+          # Create success status
+          gh api repos/${{ github.repository }}/deployments/$DEPLOY_ID/statuses \
+            -H "Accept: application/vnd.github.v3+json" \
+            -f state=success \
+            -f environment_url="$WORKER_URL" \
+            -f description="Deployment successful"
+          
+          echo "Created deployment status for $DEPLOY_ID"
