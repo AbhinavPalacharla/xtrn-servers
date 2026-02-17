@@ -142,8 +142,8 @@ jobs:
           # Extract fields using jq
           NAME=$(echo "$DETAILS" | jq -r '.name')
           TOOLS_COUNT=$(echo "$DETAILS" | jq -r '.tools | length')
-          HAS_OAUTH=$(echo "$DETAILS" | jq -r 'if .oauthConfig then "true" else "false" end')
-          OAUTH_PROVIDER=$(echo "$DETAILS" | jq -r '.oauthConfig.provider // "None"')
+          HAS_OAUTH=$(echo "$DETAILS" | jq -r 'if .oauth then "true" else "false" end')
+          OAUTH_PROVIDER=$(echo "$DETAILS" | jq -r '.oauth.provider // "None"')
           
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "tools-count=$TOOLS_COUNT" >> $GITHUB_OUTPUT
