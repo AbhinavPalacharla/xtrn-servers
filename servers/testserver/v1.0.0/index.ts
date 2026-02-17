@@ -13,7 +13,7 @@ const server = new XTRNServer({
 
 server.registerTool({
 	name: "echo",
-	description: "Echo back the input message",
+	description: "Echoes back the input message",
 	schema: z.object({
 		message: z.string(),
 	}),
