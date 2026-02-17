@@ -232,7 +232,6 @@ jobs:
           gh api repos/${{ github.repository }}/deployments/$DEPLOY_ID/statuses \
             -H "Accept: application/vnd.github.v3+json" \
             -f state=success \
-            -f environment_url="$WORKER_URL" \
             -f description="Deployment successful"
           
           echo "Created deployment status for $DEPLOY_ID"
