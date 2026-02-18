@@ -163,16 +163,21 @@ jobs:
           TOOLS_COUNT=$(echo "$DETAILS" | jq -r '.tools | length')
           HAS_OAUTH=$(echo "$DETAILS" | jq -r 'if .oauth then "true" else "false" end')
           OAUTH_PROVIDER=$(echo "$DETAILS" | jq -r '.oauth.provider // "None"')
+          REQUIRED_ENV_COUNT=$(echo "$DETAILS" | jq -r '.requiredEnv | length')
+          HAS_REQUIRED_ENV=$(echo "$DETAILS" | jq -r 'if (.requiredEnv | length) > 0 then "true" else "false" end')
           
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "tools-count=$TOOLS_COUNT" >> $GITHUB_OUTPUT
           echo "has-oauth=$HAS_OAUTH" >> $GITHUB_OUTPUT
-           echo "oauth-provider=$OAUTH_PROVIDER" >> $GITHUB_OUTPUT
+          echo "oauth-provider=$OAUTH_PROVIDER" >> $GITHUB_OUTPUT
+          echo "required-env-count=$REQUIRED_ENV_COUNT" >> $GITHUB_OUTPUT
+          echo "has-required-env=$HAS_REQUIRED_ENV" >> $GITHUB_OUTPUT
            
-           echo "Deployed: $NAME v$VERSION"
-           echo "Tools: $TOOLS_COUNT"
-           echo "OAuth: $OAUTH_PROVIDER"
-           echo "First deploy: $FIRST_DEPLOY"
+          echo "Deployed: $NAME v$VERSION"
+          echo "Tools: $TOOLS_COUNT"
+          echo "OAuth: $OAUTH_PROVIDER"
+          echo "Required env: $REQUIRED_ENV_COUNT"
+          echo "First deploy: $FIRST_DEPLOY"
 
       - name: Create GitHub Deployment
         id: deployment
@@ -186,6 +191,8 @@ jobs:
           TOOLS_COUNT="${{ steps.deploy-info.outputs.tools-count }}"
           HAS_OAUTH="${{ steps.deploy-info.outputs.has-oauth }}"
           OAUTH_PROVIDER="${{ steps.deploy-info.outputs.oauth-provider }}"
+          REQUIRED_ENV_COUNT="${{ steps.deploy-info.outputs.required-env-count }}"
+          HAS_REQUIRED_ENV="${{ steps.deploy-info.outputs.has-required-env }}"
           FIRST_DEPLOY="${{ steps.deploy-info.outputs.first-deploy }}"
           PR_NUMBER=${{ github.event.workflow_run.pull_requests[0].number }}
           THREAD_TS="${{ steps.thread.outputs.thread_ts }}"
@@ -208,6 +215,8 @@ jobs:
               "name": "$NAME",
               "tools_count": "$TOOLS_COUNT",
               "oauth_provider": "$OAUTH_PROVIDER",
+              "has_required_env": "$HAS_REQUIRED_ENV",
+              "required_env_count": "$REQUIRED_ENV_COUNT",
               "thread_ts": "$THREAD_TS"
             }
           }
